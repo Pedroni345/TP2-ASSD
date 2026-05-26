@@ -1,0 +1,19 @@
+======================================================
+SINTETIZADOR MUSICAL - ANÁLISIS ESPECTRAL (TP2)
+======================================================
+
+Este script inicia una interfaz gráfica (construida con PyQt6) que permite cargar, sintetizar y analizar archivos MIDI visualmente.
+
+¿CÓMO FUNCIONA LA INTERFAZ?
+
+1. Panel Izquierdo (MIDI / Archivos):
+   - Botón "Cargar MIDI": Permite seleccionar un archivo .mid o .midi. Al cargarlo, el programa detecta automáticamente las pistas/instrumentos y sintetiza el audio a una frecuencia de muestreo de 44.1 kHz.
+   - Botón "Reproducir/Detener": Permite escuchar el audio sintetizado directamente desde la interfaz.
+
+2. Panel Central (Análisis Visual):
+   - Controles Superiores: Permiten ajustar los parámetros del espectrograma en tiempo real. Puedes modificar el tipo de Ventana (hann, hamming, etc.), el tamaño del segmento (N) y el porcentaje de solapamiento (Overlap).
+   - Gráfica "Forma de Onda": Muestra la amplitud del audio sintetizado a lo largo del tiempo.
+   - Gráfica "Espectrograma": Muestra cómo varían las frecuencias en el tiempo. La escala de color ('inferno') representa la intensidad en decibelios (dB). ¡Se actualiza solo al tocar los controles!
+
+3. Panel Derecho (Síntesis / Efectos):
+   - Actualmente es un bloque de interfaz estructurado pero vacío. Está reservado para agregar los futuros efectos o módulos de síntesis que requiera el trabajo práctico.

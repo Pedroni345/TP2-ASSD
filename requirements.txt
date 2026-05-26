@@ -1,0 +1,8 @@
+PyQt6
+numpy
+scipy
+pretty_midi
+sounddevice
+soundfile
+pyqtgraph
+pytest
