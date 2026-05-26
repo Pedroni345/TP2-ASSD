@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QLabel, QPushButton, QFileDialog, QMessageBox, QComboBox, QSpinBox,
 )
 from PyQt6.QtGui import QFont
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 try:
     import pretty_midi
@@ -41,6 +41,12 @@ class SintetizadorGUI(QMainWindow):
         self.audio: np.ndarray | None = None
         self.fs = 44100
         self.player = AudioPlayer()
+
+        # Playback position tracking
+        self._seek_offset: float = 0.0   # segundos donde arrancó el último play()
+        self._pos_timer = QTimer(self)
+        self._pos_timer.setInterval(40)  # ~25 fps
+        self._pos_timer.timeout.connect(self._tick_position)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -119,6 +125,17 @@ class SintetizadorGUI(QMainWindow):
         self.plot_wave.setLabel("bottom", "Tiempo", units="s")
         self.plot_wave.showGrid(x=True, y=True, alpha=0.3)
         self.curve_wave = self.plot_wave.plot(pen=pg.mkPen(color="#2196F3", width=1.2))
+        # --- línea de posición ---
+        self._line_wave = pg.InfiniteLine(
+            pos=0, angle=90,
+            pen=pg.mkPen(color="#FF3333", width=2),
+            movable=True, label="", hoverPen=pg.mkPen(color="#FF6666", width=3)
+        )
+        self.plot_wave.addItem(self._line_wave)
+        self._line_wave.sigPositionChangeFinished.connect(
+            lambda ln: self._seek_to(ln.value())
+        )
+        self.plot_wave.scene().sigMouseClicked.connect(self._on_wave_clicked)
 
         self.plot_spec = pg.PlotWidget(title="Espectrograma")
         self.plot_spec.setLabel("left", "Frecuencia", units="Hz")
@@ -126,6 +143,17 @@ class SintetizadorGUI(QMainWindow):
         self.img_spec = pg.ImageItem()
         self.plot_spec.addItem(self.img_spec)
         self.img_spec.setColorMap(pg.colormap.get("inferno"))
+        # --- línea de posición ---
+        self._line_spec = pg.InfiniteLine(
+            pos=0, angle=90,
+            pen=pg.mkPen(color="#FF3333", width=2),
+            movable=True, hoverPen=pg.mkPen(color="#FF6666", width=3)
+        )
+        self.plot_spec.addItem(self._line_spec)
+        self._line_spec.sigPositionChangeFinished.connect(
+            lambda ln: self._seek_to(ln.value())
+        )
+        self.plot_spec.scene().sigMouseClicked.connect(self._on_spec_clicked)
 
         self.timeline_panel = TimelinePanel()
 
@@ -220,11 +248,88 @@ class SintetizadorGUI(QMainWindow):
         if self.audio is None:
             return
         if not self.player.is_playing:
-            self.player.play(self.audio, self.fs)
-            self.btn_play.setText("Detener")
+            self._start_play_from(self._seek_offset)
         else:
+            self._seek_offset = self.player.get_position()
             self.player.stop()
+            self._pos_timer.stop()
             self.btn_play.setText("Reproducir")
+
+    # ----- seek / position helpers -----
+
+    def _start_play_from(self, t_sec: float) -> None:
+        """Inicia reproducción desde t_sec segundos."""
+        if self.audio is None:
+            return
+        duration = len(self.audio) / self.fs
+        t_sec = max(0.0, min(t_sec, duration))
+        self._seek_offset = t_sec
+        start_sample = int(t_sec * self.fs)
+        self.player.play(self.audio[start_sample:], self.fs, start_offset=t_sec)
+        self._pos_timer.start()
+        self.btn_play.setText("Detener")
+
+    def _seek_to(self, t_sec: float) -> None:
+        """Mueve la cabeza lectora a t_sec; si estaba reproduciendo, continúa desde ahí."""
+        if self.audio is None:
+            return
+        duration = len(self.audio) / self.fs
+        t_sec = max(0.0, min(t_sec, duration))
+        was_playing = self.player.is_playing
+        if was_playing:
+            self.player.stop()
+            self._pos_timer.stop()
+        self._seek_offset = t_sec
+        self._move_lines(t_sec)
+        if was_playing:
+            self._start_play_from(t_sec)
+
+    def _tick_position(self) -> None:
+        """Llamado ~25 veces por segundo para actualizar la línea roja."""
+        if self.audio is None:
+            return
+        t = self.player.get_position()
+        duration = len(self.audio) / self.fs
+        if t >= duration:
+            # Llegó al final
+            self.player.stop()
+            self._pos_timer.stop()
+            self.btn_play.setText("Reproducir")
+            self._seek_offset = 0.0
+            t = 0.0
+        self._move_lines(t)
+
+    def _move_lines(self, t: float) -> None:
+        """Mueve las tres líneas rojas sin disparar sigPositionChangeFinished."""
+        self._line_wave.blockSignals(True)
+        self._line_spec.blockSignals(True)
+        self._line_wave.setValue(t)
+        self._line_spec.setValue(t)
+        self._line_wave.blockSignals(False)
+        self._line_spec.blockSignals(False)
+        # Timeline panel
+        if hasattr(self, "timeline_panel"):
+            self.timeline_panel.set_playback_pos(t)
+
+    # ----- click handlers (click en cualquier punto del plot) -----
+
+    def _on_wave_clicked(self, event) -> None:
+        if self.audio is None:
+            return
+        from PyQt6.QtCore import Qt as _Qt
+        if event.button() == _Qt.MouseButton.LeftButton:
+            vb = self.plot_wave.plotItem.vb
+            t = vb.mapSceneToView(event.scenePos()).x()
+            self._seek_to(t)
+
+    def _on_spec_clicked(self, event) -> None:
+        if self.audio is None:
+            return
+        from PyQt6.QtCore import Qt as _Qt
+        if event.button() == _Qt.MouseButton.LeftButton:
+            vb = self.plot_spec.plotItem.vb
+            t = vb.mapSceneToView(event.scenePos()).x()
+            self._seek_to(t)
 
     def _export(self):
         if self.audio is None:

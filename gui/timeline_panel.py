@@ -11,6 +11,7 @@ from typing import Optional
 import numpy as np
 import pretty_midi
 import pyqtgraph as pg
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 
@@ -29,6 +30,14 @@ class TimelinePanel(QWidget):
         self.plot.setMenuEnabled(False)
         layout.addWidget(self.plot)
 
+        # Línea roja de posición de reproducción
+        self._pos_line = pg.InfiniteLine(
+            pos=0, angle=90,
+            pen=pg.mkPen(color="#FF3333", width=2, style=Qt.PenStyle.DashLine),
+            movable=False,
+        )
+        self.plot.addItem(self._pos_line)
+
         self._midi: Optional[pretty_midi.PrettyMIDI] = None
         self._channel_map: dict[int, int] = {}
 
@@ -42,15 +51,23 @@ class TimelinePanel(QWidget):
         self._channel_map = dict(channel_map)
         self._redraw()
 
+    def set_playback_pos(self, t_sec: float) -> None:
+        """Mueve la línea roja de posición. Llamado desde el GUI principal."""
+        self._pos_line.setValue(t_sec)
+
     def clear(self) -> None:
         self._midi = None
         self._channel_map = {}
         self.plot.clear()
+        # plot.clear() elimina todos los items, hay que re-agregar la línea
+        self.plot.addItem(self._pos_line)
 
     # internal
     def _redraw(self) -> None:
         self.plot.clear()
         if self._midi is None or not self._midi.instruments:
+            # Re-agregar la línea después de limpiar
+            self.plot.addItem(self._pos_line)
             return
 
         n_inst = len(self._midi.instruments)
@@ -76,8 +93,10 @@ class TimelinePanel(QWidget):
             )
             self.plot.addItem(bars)
 
+        # Re-agregar la línea encima de las barras
+        self.plot.addItem(self._pos_line)
+
         self.plot.setYRange(min_ch - 0.6, max_ch + 0.6)
-        # X range from 0 to track end
         total_end = self._midi.get_end_time()
         if total_end > 0:
             self.plot.setXRange(0, total_end, padding=0.02)
