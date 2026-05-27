@@ -7,9 +7,11 @@ from effects import (
 )
 
 
-def _impulse(n: int = 22050) -> np.ndarray:
+def _impulse(n: int = 22050, at: int = 1) -> np.ndarray:
+    # Place the impulse 1 sample in so the notebook-faithful
+    # "i > delay_samples" branch can actually read it back as x[1].
     x = np.zeros(n, dtype=np.float32)
-    x[0] = 1.0
+    x[at] = 1.0
     return x
 
 
@@ -21,20 +23,22 @@ def _sine(f: float, fs: int, dur: float) -> np.ndarray:
 class TestEchoReverb:
     def test_echo_delays_signal(self):
         fs = 22050
-        echo = Echo(delay=0.1, feedback=0.5)
+        echo = Echo(delay=0.1, alpha=0.5)  # impulse lives at sample 1
         out = echo.process(_impulse(fs), fs)
-        # Expect a peak near sample 0 (dry) and another near 0.1*fs (wet)
-        idx_dry = 0
-        idx_wet = int(0.1 * fs)
-        assert abs(out[idx_dry]) > 0.5
+        # Dry copy stays at sample 1; the echo tap fires at sample
+        # delay_samples + 1 with amplitude alpha.
+        idx_wet = int(0.1 * fs) + 1
+        assert abs(out[1]) > 0.5
         assert abs(out[idx_wet]) > 0.2
 
-    def test_reverb_extends_length(self):
+    def test_reverb_decays_into_buffer(self):
         fs = 22050
-        rv = Reverb(delay=0.05, feedback=0.6, mix=0.5)
+        rv = Reverb(delay=0.05, alpha=0.6, mix=0.5)
         x = _impulse(fs)
         out = rv.process(x, fs)
-        assert len(out) > len(x)
+        # The IIR feeds energy past the impulse: tail energy must be > 0.
+        tail = out[int(0.05 * fs) + 1:]
+        assert np.max(np.abs(tail)) > 0.1
 
     def test_multitap_extends_length(self):
         fs = 22050
@@ -88,6 +92,6 @@ class TestModulation:
 class TestChain:
     def test_chain_applies_in_order(self):
         fs = 22050
-        chain = EffectChain([Clipper(gain=10.0, threshold=0.5), Echo(delay=0.05, feedback=0.3)])
+        chain = EffectChain([Clipper(gain=10.0, threshold=0.5), Echo(delay=0.05, alpha=0.3)])
         out = chain.process(_sine(440.0, fs, 0.2), fs)
         assert out.size > 0

@@ -6,6 +6,14 @@ import numpy as np
 
 class Phaser:
     name = "Phaser"
+    PARAMS = [
+        ("n_stages", 2,    8,      1,    "Stages"),
+        ("lfo_freq", 0.05, 5.0,    0.05, "LFO freq (Hz)"),
+        ("center",   100,  4000,   25,   "Center (Hz)"),
+        ("depth",    50,   3000,   25,   "Depth (Hz)"),
+        ("feedback", 0.0,  0.95,   0.05, "Feedback"),
+        ("mix",      0.0,  1.0,    0.05, "Dry/Wet"),
+    ]
 
     def __init__(
         self,

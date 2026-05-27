@@ -50,6 +50,12 @@ def _modulated_delay(
 
 class Flanger:
     name = "Flanger"
+    PARAMS = [
+        ("depth",    0.0005, 0.02, 0.0005, "Depth (s)"),
+        ("lfo_freq", 0.05,   5.0,  0.05,   "LFO freq (Hz)"),
+        ("feedback", 0.0,    0.95, 0.05,   "Feedback"),
+        ("mix",      0.0,    1.0,  0.05,   "Dry/Wet"),
+    ]
 
     def __init__(self, depth: float = 0.005, lfo_freq: float = 0.4, feedback: float = 0.5, mix: float = 0.7):
         self.depth = float(depth)
@@ -67,6 +73,10 @@ class Flanger:
 
 class Vibrato:
     name = "Vibrato"
+    PARAMS = [
+        ("depth",    0.0005, 0.02, 0.0005, "Depth (s)"),
+        ("lfo_freq", 0.5,    12.0, 0.1,    "LFO freq (Hz)"),
+    ]
 
     def __init__(self, depth: float = 0.003, lfo_freq: float = 5.0):
         self.depth = float(depth)
@@ -96,6 +106,11 @@ class Vibrato:
 class Chorus:
     """Multi-voice chorus: 3 detuned voices summed with the dry signal."""
     name = "Chorus"
+    PARAMS = [
+        ("depth",    0.001, 0.02, 0.0005, "Depth (s)"),
+        ("lfo_freq", 0.1,   5.0,  0.05,   "LFO freq (Hz)"),
+        ("mix",      0.0,   1.0,  0.05,   "Dry/Wet"),
+    ]
 
     def __init__(self, depth: float = 0.005, lfo_freq: float = 0.8, mix: float = 0.5):
         self.depth = float(depth)

@@ -7,6 +7,10 @@ import numpy as np
 class Clipper:
     """Hard clipping. Ported from sound_effects_alumnos.ipynb cell 15."""
     name = "Clipping"
+    PARAMS = [
+        ("gain",      0.1, 20.0, 0.1, "Gain"),
+        ("threshold", 0.01, 1.0, 0.01, "Threshold"),
+    ]
 
     def __init__(self, gain: float = 2.0, threshold: float = 0.3):
         self.gain = float(gain)
@@ -23,6 +27,9 @@ class Clipper:
 class SoftClipper:
     """Soft clipping via tanh."""
     name = "Soft Clip"
+    PARAMS = [
+        ("gain", 0.1, 20.0, 0.1, "Gain"),
+    ]
 
     def __init__(self, gain: float = 3.0):
         self.gain = float(gain)
