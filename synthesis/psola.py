@@ -1,6 +1,11 @@
 """PSOLA synthesis (Exercise 2.1).
 
-Core algorithms ported from TP2 ASSD.ipynb cells 4 and 6.
+Core algorithms ported from the corrected notebook "TP2 ASSD version2.ipynb"
+(cells 4 and 6). Two fixes over the first version:
+  1. The OLA grain is now ~20 fundamental periods wide (mitad_ventana = periodo*10)
+     instead of ~2, which removes the metallic/comb-filter reconstruction artifact.
+  2. pitch_shift folds the requested note duration into the PSOLA stretch factor,
+     so pitch and length are produced together in one stretch+resample.
 """
 from __future__ import annotations
 
@@ -45,11 +50,15 @@ def psola_time_stretch(
     periodo = int(pitch_marks[1] - pitch_marks[0])
     nuevos_pitch_marks = np.arange(0, nueva_longitud, periodo)
 
+    # Window half-width spans ~10 fundamental periods on each side. The first
+    # version used a single period here, which produced too-short grains and a
+    # metallic comb-filter artifact under overlap-add.
+    mitad_ventana = periodo * 10
+
     for nuevo_pm in nuevos_pitch_marks:
         pm_original_ideal = nuevo_pm / factor_estiramiento
         idx_cercano = np.argmin(np.abs(pitch_marks - pm_original_ideal))
         pm_real = int(pitch_marks[idx_cercano])
-        mitad_ventana = periodo
 
         inicio_orig = max(0, pm_real - mitad_ventana)
         fin_orig = min(len(senal), pm_real + mitad_ventana)
@@ -73,13 +82,28 @@ def pitch_shift(
     senal: np.ndarray,
     pitch_marks: np.ndarray,
     semitonos: float,
+    duracion_deseada_seg: float,
     fs: int,
 ) -> np.ndarray:
-    """Pitch-shift by N semitones via PSOLA time-stretch + resampling."""
+    """Pitch-shift by N semitones and fit to a target duration in one pass.
+
+    The requested duration is folded into the PSOLA stretch factor, then a
+    single resample restores the pitch ratio while setting the exact length:
+
+        factor_psola = (longitud_deseada / longitud_original) * factor_frecuencia
+        resample(estirada, longitud_deseada)  ->  pitch * factor_frecuencia
+    """
+    longitud_original = len(senal)
+    longitud_deseada = int(duracion_deseada_seg * fs)
+    if longitud_deseada == 0 or longitud_original == 0:
+        return np.array([], dtype=np.float64)
+
     factor_frecuencia = 2.0 ** (semitonos / 12.0)
-    senal_estirada = psola_time_stretch(senal, pitch_marks, factor_frecuencia, fs)
-    nueva_cantidad = max(1, int(len(senal_estirada) / factor_frecuencia))
-    return signal.resample(senal_estirada, nueva_cantidad)
+    factor_duracion = longitud_deseada / longitud_original
+    factor_psola = factor_duracion * factor_frecuencia
+
+    senal_estirada = psola_time_stretch(senal, pitch_marks, factor_psola, fs)
+    return signal.resample(senal_estirada, longitud_deseada)
 
 
 class PSOLASynth:
@@ -113,23 +137,26 @@ class PSOLASynth:
 
     def synthesize_note(self, note: MidiNote, fs: int = 44100) -> np.ndarray:
         semitonos = note.pitch - self.base_midi
-        # Pitch-shift at the sample's native fs
-        audio = pitch_shift(self.sample, self.pitch_marks, semitonos, self._sample_fs)
-        # Resample to target fs if needed
+        # Pitch-shift AND fit duration in one pass, at the sample's native fs so
+        # the tuning stays correct regardless of the project sample rate.
+        audio = pitch_shift(
+            self.sample, self.pitch_marks, semitonos, note.duration, self._sample_fs
+        )
+        if audio.size == 0:
+            return np.zeros(0, dtype=np.float32)
+        # Convert the sample rate to the target fs if they differ.
         if self._sample_fs != fs:
-            new_len = int(len(audio) * fs / self._sample_fs)
+            new_len = max(1, int(len(audio) * fs / self._sample_fs))
             audio = signal.resample(audio, new_len)
-        # Fit duration: truncate or zero-pad
+        # Enforce exact length and apply a short fade-out to avoid clicks.
         muestras_deseadas = max(1, int(note.duration * fs))
-        if len(audio) > muestras_deseadas:
-            audio = audio[:muestras_deseadas]
-            # short fade-out to avoid clicks
+        if len(audio) >= muestras_deseadas:
+            audio = audio[:muestras_deseadas].copy()
             fade = min(int(0.01 * fs), len(audio) // 4)
             if fade > 0:
-                audio[-fade:] = audio[-fade:] * np.linspace(1.0, 0.0, fade)
+                audio[-fade:] *= np.linspace(1.0, 0.0, fade)
         else:
-            padding = np.zeros(muestras_deseadas - len(audio))
-            audio = np.concatenate([audio, padding])
+            audio = np.concatenate([audio, np.zeros(muestras_deseadas - len(audio))])
         # Apply velocity
         amp = note.velocity / 127.0
         return (audio * amp).astype(np.float32)
